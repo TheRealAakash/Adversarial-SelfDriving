@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import random
 import cv2
 import skimage.morphology as morp
+from keras.optimizers import Adam
 from skimage.filters import rank
 from sklearn.utils import shuffle
 import csv
@@ -11,6 +12,9 @@ import os
 import tensorflow as tf
 from tensorflow.contrib.layers import flatten
 from sklearn.metrics import confusion_matrix
+from keras.models import Sequential
+from keras.layers import Flatten, Dense, Conv2D, Dropout, Activation, BatchNormalization, MaxPooling2D
+from keras.utils import np_utils
 
 # Step 1, Load data
 
@@ -42,6 +46,11 @@ n_train = X_train.shape[0]  # Number of training examples
 n_test = X_test.shape[0]  # Number of testing examples
 n_validation = X_valid.shape[0]  # Number of validation examples
 n_classes = len(np.unique(y_train))  # Number of classes in dataset
+
+# reformat data
+# y_train = np_utils.to_categorical(y_train, n_classes)
+# y_test = np_utils.to_categorical(y_test, n_classes)
+# y_valid = np_utils.to_categorical(y_valid, n_classes)
 
 # Model parameters
 x = tf.placeholder(tf.float32, (None, 32, 32, 1))  # placeholder for batch of 32 by 32 greyscaled images
@@ -274,7 +283,49 @@ class VGGnet:
 
 
 class Model:
-    pass
+    def __init__(self, n_out):
+        self.model = Sequential()
+
+        self.model.add(Conv2D(32, (3, 3), input_shape=(32, 32, 1)))
+        self.model.add(Activation('relu'))
+        BatchNormalization(axis=-1)
+        self.model.add(Conv2D(32, (3, 3)))
+        self.model.add(Activation('relu'))
+        self.model.add(MaxPooling2D(pool_size=(2, 2)))
+
+        BatchNormalization(axis=-1)
+        self.model.add(Conv2D(64, (3, 3)))
+        self.model.add(Activation('relu'))
+        BatchNormalization(axis=-1)
+        self.model.add(Conv2D(64, (3, 3)))
+        self.model.add(Activation('relu'))
+        self.model.add(MaxPooling2D(pool_size=(2, 2)))
+
+        self.model.add(Flatten())
+        # Fully connected layer
+
+        BatchNormalization()
+        self.model.add(Dense(512))
+        self.model.add(Activation('relu'))
+        BatchNormalization()
+        self.model.add(Dropout(0.2))
+        self.model.add(Dense(n_out))
+
+        # model.add(Convolution2D(10,3,3, border_mode='same'))
+        # model.add(GlobalAveragePooling2D())
+        self.model.add(Activation('softmax'))
+
+        # self.model.summary()
+
+        self.model.compile(loss='categorical_crossentropy', optimizer=Adam(), metrics=['accuracy'])
+
+    def y_predict(self, X_data):
+        predictions = self.model.predict_classes(X_data)
+        return predictions
+
+    def evaluate(self, X_data, y_data):
+        score = self.model.evaluate(X_data, y_data)
+        return score
 
 
 def runModel(normalized_images):
@@ -307,6 +358,22 @@ def runModel(normalized_images):
     return VGGNet_Model
 
 
+def trainModelKeras(normalized_images):
+    global X_train, y_train
+    # todo: change to keras
+    kerasModel = Model(n_out=n_classes)
+    model_name = "Keras"
+
+    # Validation set preprocessing
+    X_valid_preprocessed = preprocess(X_valid)
+    # one_hot_y_valid = tf.one_hot(y_valid, 43)
+    y_train_onehot = np_utils.to_categorical(y_train, n_classes)
+    y_valid_onehot = np_utils.to_categorical(y_valid, n_classes)
+    kerasModel.model.fit(normalized_images, y_train_onehot, epochs=EPOCHS, batch_size=BATCH_SIZE,
+                         validation_data=(X_valid_preprocessed, y_valid_onehot))
+    return kerasModel
+
+
 def y_predict_model(Input_data, VGGNet_Model, top_k=5):
     """
     Generates the predictions of the model over the input data, and outputs the top softmax probabilities.
@@ -322,6 +389,93 @@ def y_predict_model(Input_data, VGGNet_Model, top_k=5):
         y_prob, y_pred = sess.run(tf.nn.top_k(tf.nn.softmax(VGGNet_Model.logits), k=top_k),
                                   feed_dict={x: Input_data, keep_prob: 1, keep_prob_conv: 1})
     return y_prob, y_pred
+
+
+def main_backup():
+    global X_train, y_train
+    # Plotting sample examples, before pre-processing
+    list_images(X_train, y_train, "Training example")
+    list_images(X_test, y_test, "Testing example")
+    list_images(X_valid, y_valid, "Validation example")
+    # Show frequency of each label
+    histogram_plot(y_train, "Training examples")
+    histogram_plot(y_test, "Testing examples")
+    histogram_plot(y_valid, "Validation examples")
+
+    # Step 3, preprocessing
+
+    # Randomize dataset to improve training, using sklearn
+    X_train, y_train = shuffle(X_train, y_train)
+    X_train_normalized = preprocess(X_train)
+    #  Step 4, training
+    VGGNet_Model = trainModelKeras(X_train_normalized)
+
+    # Step 5, testing
+    # todo: change to keras
+    X_test_preprocessed = preprocess(X_test)
+    with tf.Session() as sess:
+        VGGNet_Model.saver.restore(sess, os.path.join(DIR, "VGGNet"))
+        y_pred = VGGNet_Model.y_predict(X_test_preprocessed)
+        test_accuracy = sum(y_test == y_pred) / len(y_test)
+        print("Test Accuracy = {:.1f}%".format(test_accuracy * 100))
+    # Show model results, and failures
+    cm = confusion_matrix(y_test, y_pred)
+    cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+    cm = np.log(.0001 + cm)
+    plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+    plt.title('Log of normalized Confusion Matrix')
+    plt.ylabel('True label')
+    plt.xlabel('Predicted label')
+    plt.show()
+
+    # Step 6, testing new images(outside dataset)
+    new_test_images = []
+    path = './traffic-signs-data/new_test_images/'
+    for image in os.listdir(path):
+        img = cv2.imread(path + image)
+        img = cv2.resize(img, (32, 32))
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        new_test_images.append(img)
+    new_IDs = [13, 3, 14, 27, 17]
+    print("Number of new testing examples: ", len(new_test_images))
+
+    plt.figure(figsize=(15, 16))
+    for i in range(len(new_test_images)):
+        plt.subplot(2, 5, i + 1)
+        plt.imshow(new_test_images[i])
+        plt.xlabel(signs[new_IDs[i]])
+        plt.ylabel("New testing image")
+        plt.xticks([])
+        plt.yticks([])
+    plt.tight_layout(pad=0, h_pad=0, w_pad=0)
+    plt.show()
+
+    # New test data preprocessing
+    new_test_images_preprocessed = preprocess(np.asarray(new_test_images))
+
+    # get predictions
+    y_prob, y_pred = y_predict_model(new_test_images_preprocessed, VGGNet_Model)
+
+    # generate summary of results
+    test_accuracy = 0
+    for i in enumerate(new_test_images_preprocessed):
+        accu = new_IDs[i[0]] == np.asarray(y_pred[i[0]])[0]
+        if accu == True:
+            test_accuracy += 0.2
+    print("New Images Test Accuracy = {:.1f}%".format(test_accuracy * 100))
+
+    plt.figure(figsize=(15, 16))
+    new_test_images_len = len(new_test_images_preprocessed)
+    for i in range(new_test_images_len):
+        plt.subplot(new_test_images_len, 2, 2 * i + 1)
+        plt.imshow(new_test_images[i])
+        plt.title(signs[y_pred[i][0]])
+        plt.axis('off')
+        plt.subplot(new_test_images_len, 2, 2 * i + 2)
+        plt.barh(np.arange(1, 6, 1), y_prob[i, :])
+        labels = [signs[j] for j in y_pred[i]]
+        plt.yticks(np.arange(1, 6, 1), labels)
+    plt.show()
 
 
 def main():
@@ -340,18 +494,16 @@ def main():
     # Randomize dataset to improve training, using sklearn
     X_train, y_train = shuffle(X_train, y_train)
     X_train_normalized = preprocess(X_train)
-
     #  Step 4, training
-    VGGNet_Model = runModel(X_train_normalized)
+    kerasModel = trainModelKeras(X_train_normalized)
 
     # Step 5, testing
-    # todo: change to keras
     X_test_preprocessed = preprocess(X_test)
-    with tf.Session() as sess:
-        VGGNet_Model.saver.restore(sess, os.path.join(DIR, "VGGNet"))
-        y_pred = VGGNet_Model.y_predict(X_test_preprocessed)
-        test_accuracy = sum(y_test == y_pred) / len(y_test)
-        print("Test Accuracy = {:.1f}%".format(test_accuracy * 100))
+    y_test_onehot = np_utils.to_categorical(y_test, n_classes)
+
+    y_pred = kerasModel.y_predict(X_test_preprocessed)
+    test_accuracy = sum(y_test == y_pred) / len(y_test)
+    print("Test Accuracy = {:.1f}%".format(test_accuracy * 100))
 
     # Show model results, and failures
     cm = confusion_matrix(y_test, y_pred)
