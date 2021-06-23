@@ -4,7 +4,7 @@ from keras.datasets import mnist
 from keras.models import Sequential
 from keras.utils import to_categorical
 from keras import layers, Model
-from keras.layers import Input, Dense, Dropout, Flatten, Reshape, Activation, Lambda, LeakyReLU
+from keras.layers import Input, Dense, Dropout, Flatten, Reshape, Activation, Lambda, LeakyReLU, MaxPooling2D
 from keras.layers import Conv2D, AveragePooling2D, Conv2DTranspose, BatchNormalization
 from keras_contrib.layers.normalization.instancenormalization import InstanceNormalization
 from keras.optimizers import Adam, SGD
@@ -15,40 +15,51 @@ import numpy as np
 import matplotlib.pyplot as plt
 from numpy.random import seed
 from tensorflow import set_random_seed
+import pickle
+import csv
+import classifier
+
+LEARNING_RATE_GENERATOR = 0.0002
+LEARNING_RATE_DISCRIMINATOR = 0.01
+IMAGE_SIZE_W = 32
+IMAGE_SIZE_H = 32
+CHANNELS = 3
 
 
 class DCGAN:
     def __init__(self):
         # input image dimensions
-        self.img_width = 28
-        self.img_height = 28
-        self.input_shape = (self.img_width, self.img_height, 1)  # 1 channel for grayscale
+        self.img_width = IMAGE_SIZE_W
+        self.img_height = IMAGE_SIZE_H
+        self.input_shape = (self.img_width, self.img_height, CHANNELS)  # 1 channel for grayscale
 
         optimizer_g = Adam(0.0002)
         optimizer_d = SGD(0.01)
 
         inputs = Input(shape=self.input_shape)
         outputs = self.build_generator(inputs)
-        self.G = Model(inputs, outputs)
-        self.G.summary()
+        self.generatorModel = Model(inputs, outputs)  # Generator
+        # self.generatorModel.summary()
 
-        outputs = self.build_discriminator(self.G(inputs))
-        self.D = Model(inputs, outputs)
-        self.D.compile(loss=keras.losses.binary_crossentropy, optimizer=optimizer_d, metrics=[self.custom_acc])
-        self.D.summary()
+        outputs = self.build_discriminator(self.generatorModel(inputs))
+        self.discriminatorModel = Model(inputs, outputs)  # Discriminator
+        self.discriminatorModel.compile(loss=keras.losses.binary_crossentropy, optimizer=optimizer_d,
+                                        metrics=[self.custom_acc])
+        # self.discriminatorModel.summary()
 
-        outputs = self.build_target(self.G(inputs))
+        outputs = self.build_target(self.generatorModel(inputs))
         self.target = Model(inputs, outputs)
         self.target.compile(loss=keras.losses.categorical_crossentropy, optimizer=keras.optimizers.Adam(),
                             metrics=['accuracy'])
-        self.target.summary()
+        # self.target.summary()
 
         self.stacked = Model(inputs=inputs,
-                             outputs=[self.G(inputs), self.D(self.G(inputs)), self.target(self.G(inputs))])
+                             outputs=[self.generatorModel(inputs), self.discriminatorModel(self.generatorModel(inputs)),
+                                      self.target(self.generatorModel(inputs))])
         self.stacked.compile(
             loss=[self.generator_loss, keras.losses.binary_crossentropy, keras.losses.binary_crossentropy],
             optimizer=optimizer_g)
-        self.stacked.summary()
+        # self.stacked.summary()
 
     def generator_loss(self, y_true, y_pred):
         return K.mean(K.maximum(K.sqrt(K.sum(K.square(y_pred - y_true), axis=-1)) - 0.3, 0), axis=-1)
@@ -130,7 +141,7 @@ class DCGAN:
 
     def get_batches(self, start, end, x_train, y_train):
         x_batch = x_train[start:end]
-        Gx_batch = self.G.predict_on_batch(x_batch)
+        Gx_batch = self.generatorModel.predict_on_batch(x_batch)
         y_batch = y_train[start:end]
         return x_batch, Gx_batch, y_batch
 
@@ -143,10 +154,9 @@ class DCGAN:
         # train real images on disciminator: D(x) = update D params per classification for real images
 
         # Update D params
-        self.D.trainable = True
-        d_loss_real = self.D.train_on_batch(x_batch, np.random.uniform(0.9, 1.0, size=(
-        len(x_batch), 1)))  # real=1, positive label smoothing
-        d_loss_fake = self.D.train_on_batch(Gx_batch, np.zeros((len(Gx_batch), 1)))  # fake=0
+        self.discriminatorModel.trainable = True
+        d_loss_real = self.discriminatorModel.train_on_batch(x_batch, np.random.uniform(0.9, 1.0, size=(len(x_batch), 1)))  # real=1, positive label smoothing
+        d_loss_fake = self.discriminatorModel.train_on_batch(Gx_batch, np.zeros((len(Gx_batch), 1)))  # fake=0
         d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
 
         return d_loss  # (loss, accuracy) tuple
@@ -159,7 +169,7 @@ class DCGAN:
         # train fake images on discriminator: D(G(z)) = update G params per D's classification for fake images
 
         # Update only G params
-        self.D.trainable = False
+        self.discriminatorModel.trainable = False
         self.target.trainable = False
         stacked_loss = self.stacked.train_on_batch(x_batch, [x_batch, np.ones((len(x_batch), 1)),
                                                              to_categorical(flipped_y_batch)])
@@ -171,14 +181,39 @@ class DCGAN:
         return stacked_loss  # (total loss, hinge loss, gan loss, adv loss) tuple
 
     def train_GAN(self):
-        (x_train, y_train), (x_test, y_test) = mnist.load_data()
-        x_train = (x_train * 2. / 255 - 1).reshape((len(x_train), 28, 28, 1))  # pixel values in range [-1., 1.] for D
+        # (x_train, y_train), (x_test, y_test) = mnist.load_data()
+        training_file = "./traffic-signs-data/train.p"
+        validation_file = "./traffic-signs-data/valid.p"
+        testing_file = "./traffic-signs-data/test.p"
+
+        with open(training_file, mode='rb') as f:
+            train = pickle.load(f)
+        with open(validation_file, mode='rb') as f:
+            valid = pickle.load(f)
+        with open(testing_file, mode='rb') as f:
+            test = pickle.load(f)
+
+        signs = []
+        with open('signnames.csv', 'r') as csvfile:
+            signnames = csv.reader(csvfile, delimiter=',')
+            next(signnames, None)
+            for row in signnames:
+                signs.append(row[1])
+            csvfile.close()
+        x_train, y_train = train['features'], train['labels']
+        X_valid, y_valid = valid['features'], valid['labels']
+        X_test, y_test = test['features'], test['labels']
+        # x_train = np.array(list(map(gray_scale, x_train)))
+
+        x_train = (x_train / 255).reshape(
+            (len(x_train), IMAGE_SIZE_W, IMAGE_SIZE_H, CHANNELS))  # pixel values in range [-1., 1.] for D
+        size = 3000
         binary_indices = np.where(y_train == 1)
-        x_ones = x_train[binary_indices][:6000]
-        y_ones = np.zeros((6000, 1))
+        x_ones = x_train[binary_indices][:size]
+        y_ones = np.zeros((size, 1))
         binary_indices = np.where(y_train == 3)
-        x_threes = x_train[binary_indices][:6000]
-        y_threes = np.ones((6000, 1))
+        x_threes = x_train[binary_indices][:size]
+        y_threes = np.ones((size, 1))
         x_train = np.concatenate((x_ones, x_threes))  # (12000, 28, 28, 1)
         y_train = np.concatenate((y_ones, y_threes))  # 1=0, 3=1
         zipped = list(zip(x_train, y_train))
@@ -186,7 +221,7 @@ class DCGAN:
         x_train, y_train = zip(*zipped)
         x_train = np.array(x_train)
         y_train = np.array(y_train)
-
+        print(list(to_categorical(y_train)))
         self.target.fit(x_train, to_categorical(y_train), epochs=5)  # pretrain target
 
         epochs = 50
@@ -217,14 +252,13 @@ class DCGAN:
             target_acc = self.target.test_on_batch(Gx_batch, to_categorical(y_batch))[1]
             target_predictions = self.target.predict_on_batch(Gx_batch)  # (96,2)
 
-            misclassified = \
-            np.where(y_batch.reshape((len(x_train) % batch_size,)) != np.argmax(target_predictions, axis=1))[0]
+            misclassified = np.where(y_batch.reshape((len(x_train) % batch_size,)) != np.argmax(target_predictions, axis=1))[0]
             print(np.array(misclassified).shape)
             print(misclassified)
 
             print(
-                "Discriminator -- Loss:%f\tAccuracy:%.2f%%\nGenerator -- Loss:%f\nHinge Loss: %f\nTarget Loss: %f\tAccuracy:%.2f%%" % (
-                d_loss, d_acc * 100., gan_loss, hinge_loss, adv_loss, target_acc * 100.))
+                "Discriminator -- Loss:%f\tAccuracy:%.2f%%\nGenerator -- Loss:%f\nHinge Loss: %f\nTarget Loss: %f\tAccuracy:%.2f%%"
+                % (d_loss, d_acc * 100., gan_loss, hinge_loss, adv_loss, target_acc * 100.))
 
             if epoch == 0:
                 self.save_generated_images("orig", x_batch, 'images')
@@ -233,16 +267,26 @@ class DCGAN:
                 self.save_generated_images(str(epoch), Gx_batch[misclassified], 'misclass')
 
     def save_generated_images(self, filename, batch, dir):
-        batch = batch.reshape(batch.shape[0], self.img_width, self.img_height)
-        rows, columns = 5, 5
+        batch = batch.reshape(batch.shape[0], self.img_width, self.img_height, CHANNELS)
+        rows, columns = 8, 5
+        model = classifier.Model()
+        model.load_model("models/TrafficSignRecognition-KerasModel.model")
 
         fig, axs = plt.subplots(rows, columns)
+        # cnt = 0
+        # for i in range(rows):
+        #     for j in range(columns):
+        #         if cnt < len(batch):
+        #             classifier.showTestImages(np.array([(batch[cnt] * 255)]).astype('uint8'), model)
+        #             cnt += 1
         cnt = 0
         for i in range(rows):
             for j in range(columns):
-                axs[i, j].imshow((batch[cnt] + 1) / 2., interpolation='nearest', cmap='gray')
+                if cnt < len(batch):
+                    axs[i, j].imshow(batch[cnt], interpolation='nearest', cmap='gray')
+                    cnt += 1
                 axs[i, j].axis('off')
-                cnt += 1
+        plt.show()
         fig.savefig("%s/%s.png" % (dir, filename))
         plt.close()
 

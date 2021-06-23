@@ -49,16 +49,17 @@ n_classes = len(np.unique(y_train))  # Number of classes in dataset
 
 EPOCHS = 15
 BATCH_SIZE = 64
-DIR = 'Saved_Models'
 SHOW_DATASET = False
+model_name = "KerasModel"
+save_dir = "models"
 
 
 def list_images(dataset, dataset_y, ylabel="", cmap=None):
     """
     Display a list of images in a single figure with matplotlib.
         Parameters:
-            images: An np.array compatible with plt.imshow.
-            lanel (Default = No label): A string to be used as a label for each image.
+            dataset: An np.array compatible with plt.imshow.
+            dataset_y (Default = No label): A string to be used as a label for each image.
             cmap (Default = None): Used to display gray images.
     """
     plt.figure(figsize=(15, 16))
@@ -137,7 +138,6 @@ def preprocess(data):  # step 3
     # Sample images after greyscaling
     gray_images = list(map(gray_scale, data))
     # list_images(gray_images, y_train, "Gray Scale image", "gray")
-
     # Equalize images using skimage to improve contrast
     # Sample images after Local Histogram Equalization
     equalized_images = list(map(local_histo_equalize, gray_images))
@@ -154,10 +154,10 @@ def preprocess(data):  # step 3
 
 
 class Model:
-    def __init__(self, n_out):
+    def __init__(self, n_out=n_classes):
         self.model = Sequential()
 
-        self.model.add(Conv2D(32, (3, 3), input_shape=(32, 32, 1)))
+        self.model.add(Conv2D(32, (3, 3), input_shape=(32, 32, 3)))
         self.model.add(Activation('relu'))
         BatchNormalization(axis=-1)
         self.model.add(Conv2D(32, (3, 3)))
@@ -198,15 +198,43 @@ class Model:
         prob = self.model.predict(X_data)
         return prob
 
+    def y_predict_topk_prob_and_pred(self, data, top_k=5):
+        probs = self.model.predict(data)
+        y_probs = []
+        y_preds = []
+        for prob in probs:
+            y_pred = []
+            y_prob = []
+            for i in range(top_k):
+                y_pred.append(np.argmax(prob))
+                y_prob.append(prob[y_pred[-1]])
+                prob[y_pred[-1]] = 0
+            y_probs.append(y_prob)
+            y_preds.append(y_pred)
+        return np.array(y_probs), np.array(y_preds)
+
+    def y_predict_topk(self, data, top_k=5):
+        probs = self.model.predict(data)
+        y_preds = []
+        for prob in probs:
+            y_pred = []
+            for i in range(top_k):
+                y_pred.append(np.argmax(prob))
+                prob[y_pred[-1]] = 0
+            y_preds.append(y_pred)
+        return np.array(y_preds)
+
     def evaluate(self, X_data, y_data):
         score = self.model.evaluate(X_data, y_data)
         return score
+
+    def load_model(self, path):
+        self.model.load_weights(path)
 
 
 def trainModelKeras(normalized_images):
     global X_train, y_train
     kerasModel = Model(n_out=n_classes)
-    model_name = "Keras"
 
     # Validation set preprocessing
     X_valid_preprocessed = preprocess(X_valid)
@@ -214,29 +242,54 @@ def trainModelKeras(normalized_images):
     y_valid_onehot = np_utils.to_categorical(y_valid, n_classes)
     kerasModel.model.fit(normalized_images, y_train_onehot, epochs=EPOCHS, batch_size=BATCH_SIZE,
                          validation_data=(X_valid_preprocessed, y_valid_onehot), verbose=0)
+    kerasModel.model.save(f"{save_dir}/TrafficSignRecognition-{model_name}.model")
     return kerasModel
 
 
-def y_predict_model(Input_data, model, top_k=5):
-    """
-    Generates the predictions of the model over the input data, and outputs the top softmax probabilities.
-        Parameters:
-            X_data: Input data.
-            top_k (Default = 5): The number of top softmax probabilities to be generated.
-    """
-    probs = model.y_predict_prob(Input_data)
-    y_probs = []
-    y_preds = []
-    for prob in probs:
-        y_pred = []
-        y_prob = []
-        for i in range(top_k):
-            y_pred.append(np.argmax(prob))
-            y_prob.append(prob[y_pred[-1]])
-            prob[y_pred[-1]] = 0
-        y_probs.append(y_prob)
-        y_preds.append(y_pred)
-    return np.array(y_probs), np.array(y_preds)
+def showTestImagesWithLabels(test_data, test_labels, model):
+    new_test_images_preprocessed = preprocess(np.asarray(test_data))
+
+    # get predictions
+    y_prob, y_pred = model.y_predict_topk_prob_and_pred(new_test_images_preprocessed)
+    # generate summary of results
+    test_accuracy = 0
+    for i in enumerate(new_test_images_preprocessed):
+        accu = test_labels[i[0]] == np.asarray(y_pred[i[0]])[0]
+        if accu == True:
+            test_accuracy += 0.2
+    print("New Images Test Accuracy = {:.1f}%".format(test_accuracy * 100))
+
+    plt.figure(figsize=(15, 16))
+    new_test_images_len = len(new_test_images_preprocessed)
+    for i in range(new_test_images_len):
+        plt.subplot(new_test_images_len, 2, 2 * i + 1)
+        plt.imshow(test_data[i])
+        plt.title(signs[y_pred[i][0]])
+        plt.axis('off')
+        plt.subplot(new_test_images_len, 2, 2 * i + 2)
+        plt.barh(np.arange(1, 6, 1), y_prob[i, :])
+        labels = [signs[j] for j in y_pred[i]]
+        plt.yticks(np.arange(1, 6, 1), labels)
+    plt.show()
+
+
+def showTestImages(test_data, model):
+    new_test_images_preprocessed = preprocess(np.asarray(test_data))
+    # get predictions
+    y_prob, y_pred = model.y_predict_topk_prob_and_pred(new_test_images_preprocessed)
+    # generate summary of results
+    plt.figure(figsize=(15, 16))
+    new_test_images_len = len(new_test_images_preprocessed)
+    for i in range(new_test_images_len):
+        plt.subplot(new_test_images_len, 2, 2 * i + 1)
+        plt.imshow(test_data[i])
+        plt.title(signs[y_pred[i][0]])
+        plt.axis('off')
+        plt.subplot(new_test_images_len, 2, 2 * i + 2)
+        plt.barh(np.arange(1, 6, 1), y_prob[i, :])
+        labels = [signs[j] for j in y_pred[i]]
+        plt.yticks(np.arange(1, 6, 1), labels)
+    plt.show()
 
 
 def main():
@@ -292,30 +345,7 @@ def main():
     plt.show()
 
     # New test data preprocessing
-    new_test_images_preprocessed = preprocess(np.asarray(new_test_images))
-
-    # get predictions
-    y_prob, y_pred = y_predict_model(new_test_images_preprocessed, kerasModel)
-    # generate summary of results
-    test_accuracy = 0
-    for i in enumerate(new_test_images_preprocessed):
-        accu = new_IDs[i[0]] == np.asarray(y_pred[i[0]])[0]
-        if accu == True:
-            test_accuracy += 0.2
-    print("New Images Test Accuracy = {:.1f}%".format(test_accuracy * 100))
-
-    plt.figure(figsize=(15, 16))
-    new_test_images_len = len(new_test_images_preprocessed)
-    for i in range(new_test_images_len):
-        plt.subplot(new_test_images_len, 2, 2 * i + 1)
-        plt.imshow(new_test_images[i])
-        plt.title(signs[y_pred[i][0]])
-        plt.axis('off')
-        plt.subplot(new_test_images_len, 2, 2 * i + 2)
-        plt.barh(np.arange(1, 6, 1), y_prob[i, :])
-        labels = [signs[j] for j in y_pred[i]]
-        plt.yticks(np.arange(1, 6, 1), labels)
-    plt.show()
+    showTestImagesWithLabels(new_test_images, new_IDs, kerasModel)
 
 
 if __name__ == '__main__':
