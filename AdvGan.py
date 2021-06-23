@@ -256,9 +256,8 @@ class DCGAN:
             print(np.array(misclassified).shape)
             print(misclassified)
 
-            print(
-                "Discriminator -- Loss:%f\tAccuracy:%.2f%%\nGenerator -- Loss:%f\nHinge Loss: %f\nTarget Loss: %f\tAccuracy:%.2f%%"
-                % (d_loss, d_acc * 100., gan_loss, hinge_loss, adv_loss, target_acc * 100.))
+            print( "Discriminator -- Loss:%f\tAccuracy:%.2f%%\nGenerator -- Loss:%f\nHinge Loss: %f\nTarget Loss: %f\tAccuracy:%.2f%%"
+                  % (d_loss, d_acc * 100., gan_loss, hinge_loss, adv_loss, target_acc * 100.))
 
             if epoch == 0:
                 self.save_generated_images("orig", x_batch, 'images')

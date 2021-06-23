@@ -18,6 +18,7 @@ from keras.utils import np_utils
 
 # Step 1, Load data
 
+
 training_file = "./traffic-signs-data/train.p"
 validation_file = "./traffic-signs-data/valid.p"
 testing_file = "./traffic-signs-data/test.p"
