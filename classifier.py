@@ -15,44 +15,22 @@ from sklearn.metrics import confusion_matrix
 from keras.models import Sequential
 from keras.layers import Flatten, Dense, Conv2D, Dropout, Activation, BatchNormalization, MaxPooling2D
 from keras.utils import np_utils
+from keras import layers, Input, Model
+from settings import main_settings
+import wandb
+from wandb.keras import WandbCallback
+from load_datasets import load_data_traffic_signs
+import keras
 
-# Step 1, Load data
-
-
-training_file = "./traffic-signs-data/train.p"
-validation_file = "./traffic-signs-data/valid.p"
-testing_file = "./traffic-signs-data/test.p"
-
-with open(training_file, mode='rb') as f:
-    train = pickle.load(f)
-with open(validation_file, mode='rb') as f:
-    valid = pickle.load(f)
-with open(testing_file, mode='rb') as f:
-    test = pickle.load(f)
-
-signs = []
-with open('signnames.csv', 'r') as csvfile:
-    signnames = csv.reader(csvfile, delimiter=',')
-    next(signnames, None)
-    for row in signnames:
-        signs.append(row[1])
-    csvfile.close()
-
-# Step 2, dataset info
-
-X_train, y_train = train['features'], train['labels']
-X_valid, y_valid = valid['features'], valid['labels']
-X_test, y_test = test['features'], test['labels']
+settings, configs = main_settings.get_settings()
+(X_train, y_train), (X_valid, y_valid), (X_test, y_test), signs = settings.DATA_LOADER()
 n_train = X_train.shape[0]  # Number of training examples
 n_test = X_test.shape[0]  # Number of testing examples
 n_validation = X_valid.shape[0]  # Number of validation examples
-n_classes = len(np.unique(y_train))  # Number of classes in dataset
-
-EPOCHS = 15
-BATCH_SIZE = 64
+n_classes = len(np.unique(y_train))  # Number of highres in dataset
+EPOCHS = settings.target_model_epochs
+BATCH_SIZE = settings.target_batch_size
 SHOW_DATASET = False
-model_name = "KerasModel"
-save_dir = "models"
 
 
 def list_images(dataset, dataset_y, ylabel="", cmap=None):
@@ -136,6 +114,8 @@ def image_normalize(image):
 
 
 def preprocess(data):  # step 3
+    data = (data * 2. / 255 - 1).reshape((len(data), settings.IMG_W, settings.IMG_H, settings.CHANNELS))  # pixel values in range [-1., 1.] for D
+    return data
     # Sample images after greyscaling
     gray_images = list(map(gray_scale, data))
     # list_images(gray_images, y_train, "Gray Scale image", "gray")
@@ -154,46 +134,72 @@ def preprocess(data):  # step 3
     return normalized_images
 
 
-class Model:
+class KerasModel:
     def __init__(self, n_out=n_classes):
-        self.model = Sequential()
+        self.n_out = n_out
+        self.model = self.setup_model_keras()
+        # self.model.summary()
 
-        self.model.add(Conv2D(32, (3, 3), input_shape=(32, 32, 3)))
-        self.model.add(Activation('relu'))
-        BatchNormalization(axis=-1)
-        self.model.add(Conv2D(32, (3, 3)))
-        self.model.add(Activation('relu'))
-        self.model.add(MaxPooling2D(pool_size=(2, 2)))
+    def inceptionModel(self):
+        model = keras.applications.InceptionV3(
+            include_top=True,
+            weights="imagenet",
+            input_tensor=None,
+            input_shape=None,
+            pooling=None,
+            classes=1000,
+            classifier_activation="softmax",
+        )
+        model.compile()
+        return model
 
-        BatchNormalization(axis=-1)
-        self.model.add(Conv2D(64, (3, 3)))
-        self.model.add(Activation('relu'))
-        BatchNormalization(axis=-1)
-        self.model.add(Conv2D(64, (3, 3)))
-        self.model.add(Activation('relu'))
-        self.model.add(MaxPooling2D(pool_size=(2, 2)))
+    def setup_model_keras(self):
+        model = self.build_model()
+        model.compile(loss='categorical_crossentropy', optimizer=Adam(), metrics=['accuracy'])
+        return model
 
-        self.model.add(Flatten())
+    def build_model(self):
+        model = Sequential()
+        model.add(layers.Conv2D(32, (3, 3)))
+        model.add(layers.Activation('relu'))
+        model.add(layers.BatchNormalization(axis=-1))
+        model.add(layers.Conv2D(32, (3, 3)))
+        model.add(layers.Activation('relu'))
+        model.add(layers.MaxPooling2D(pool_size=(2, 2)))
+
+        model.add(layers.BatchNormalization(axis=-1))
+        model.add(layers.Conv2D(64, (3, 3)))
+        model.add(layers.Activation('relu'))
+        model.add(layers.BatchNormalization(axis=-1))
+        model.add(layers.Conv2D(64, (3, 3)))
+        model.add(layers.Activation('relu'))
+        model.add(layers.MaxPooling2D(pool_size=(2, 2)))
+
+        model.add(layers.Flatten())
         # Fully connected layer
 
-        BatchNormalization()
-        self.model.add(Dense(512))
-        self.model.add(Activation('relu'))
-        BatchNormalization()
-        self.model.add(Dropout(0.2))
-        self.model.add(Dense(n_out))
+        model.add(layers.BatchNormalization())
+        model.add(layers.Dense(512))
+        model.add(layers.Activation('relu'))
+        model.add(layers.BatchNormalization())
+        model.add(layers.Dropout(0.2))
+        model.add(layers.Dense(self.n_out))
 
         # model.add(Convolution2D(10,3,3, border_mode='same'))
         # model.add(GlobalAveragePooling2D())
-        self.model.add(Activation('softmax'))
+        model.add(layers.Activation('softmax'))
 
-        # self.model.summary()
+        img = Input(shape=settings.IMG_SHAPE)
+        validity = model(img)
 
-        self.model.compile(loss='categorical_crossentropy', optimizer=Adam(), metrics=['accuracy'])
+        return Model(img, validity)
 
     def y_predict(self, X_data):
-        predictions = self.model.predict_classes(X_data)
-        return predictions
+        predictions = []
+        ps = self.model.predict(X_data)
+        for p in ps:
+            predictions.append(np.argmax(p))
+        return np.array(predictions)
 
     def y_predict_prob(self, X_data):
         prob = self.model.predict(X_data)
@@ -235,19 +241,19 @@ class Model:
 
 def trainModelKeras(normalized_images):
     global X_train, y_train
-    kerasModel = Model(n_out=n_classes)
+    kerasModel = KerasModel(n_out=n_classes)
 
     # Validation set preprocessing
     X_valid_preprocessed = preprocess(X_valid)
     y_train_onehot = np_utils.to_categorical(y_train, n_classes)
     y_valid_onehot = np_utils.to_categorical(y_valid, n_classes)
     kerasModel.model.fit(normalized_images, y_train_onehot, epochs=EPOCHS, batch_size=BATCH_SIZE,
-                         validation_data=(X_valid_preprocessed, y_valid_onehot), verbose=0)
-    kerasModel.model.save(f"{save_dir}/TrafficSignRecognition-{model_name}.model")
+                         validation_data=(X_valid_preprocessed, y_valid_onehot), callbacks=[WandbCallback()])
+    kerasModel.model.save(f"{settings.models_dir}/{settings.model_name}")
     return kerasModel
 
 
-def showTestImagesWithLabels(test_data, test_labels, model):
+def showTestImagesWithLabels(test_data, test_labels, model, print_new_acc=False):
     new_test_images_preprocessed = preprocess(np.asarray(test_data))
 
     # get predictions
@@ -258,14 +264,16 @@ def showTestImagesWithLabels(test_data, test_labels, model):
         accu = test_labels[i[0]] == np.asarray(y_pred[i[0]])[0]
         if accu == True:
             test_accuracy += 0.2
-    print("New Images Test Accuracy = {:.1f}%".format(test_accuracy * 100))
+    if print_new_acc:
+        print("New Images Test Accuracy = {:.1f}%".format(test_accuracy * 100))
 
     plt.figure(figsize=(15, 16))
     new_test_images_len = len(new_test_images_preprocessed)
     for i in range(new_test_images_len):
         plt.subplot(new_test_images_len, 2, 2 * i + 1)
         plt.imshow(test_data[i])
-        plt.title(signs[y_pred[i][0]])
+        plt.title(signs[test_labels[i]])
+        #  plt.title(signs[y_pred[i][0]])
         plt.axis('off')
         plt.subplot(new_test_images_len, 2, 2 * i + 2)
         plt.barh(np.arange(1, 6, 1), y_prob[i, :])
@@ -325,7 +333,7 @@ def main():
 
     # Step 6, testing new images(outside dataset)
     new_test_images = []
-    path = './traffic-signs-data/new_test_images/'
+    path = 'datasets/traffic-signs-data/new_test_images/'
     for image in os.listdir(path):
         img = cv2.imread(path + image)
         img = cv2.resize(img, (32, 32))
@@ -350,4 +358,5 @@ def main():
 
 
 if __name__ == '__main__':
+    wandb.init(project='Adversarial-SelfDriving', entity='therealaakash', config=configs)
     main()
