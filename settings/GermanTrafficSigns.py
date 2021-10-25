@@ -8,7 +8,7 @@ config = {
     "target_batch_size": 64,
     "model_name": "TrafficSignRecognition-KerasModel.model",
 
-    "LOAD_TARGET_WEIGHTS": False,
+    "LOAD_TARGET_WEIGHTS": True,
     "AdvGAN_epochs": 60,
     "AdvGAN_batch_size": 128,
     "AdvGAN_Generator_LR": 0.0002,
@@ -16,8 +16,8 @@ config = {
 
     "generator_model_name": "TrafficSignRecognition-GeneratorModel.model",
     "discriminator_model_name": "TrafficSignRecognition-DiscriminatorModel.model",
-    "load_generator": False,
-    "load_discriminator": False,
+    "load_generator": True,
+    "load_discriminator": True,
     "images_name": "TrafficSignGenerated",
 
     "c": 0.3,

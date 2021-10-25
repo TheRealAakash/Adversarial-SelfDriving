@@ -3,7 +3,7 @@ from __future__ import print_function
 from keras import layers, Model
 from keras.layers import Input
 from keras.models import Sequential
-from settings import GermanTrafficSigns as settings
+from CarRL.settings import GermanTrafficSigns as settings
 
 
 def build_target(n_out):

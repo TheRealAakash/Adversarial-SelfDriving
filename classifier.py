@@ -1,26 +1,28 @@
+import matplotlib.pyplot as plt
+
+plt.rcParams["font.family"] = "Times New Roman"
 import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 import random
 import cv2
 import skimage.morphology as morp
-from keras.optimizers import Adam
+from tensorflow.keras.optimizers import Adam
 from skimage.filters import rank
 from sklearn.utils import shuffle
 import csv
 import os
 import tensorflow as tf
-from tensorflow.contrib.layers import flatten
 from sklearn.metrics import confusion_matrix
-from keras.models import Sequential
-from keras.layers import Flatten, Dense, Conv2D, Dropout, Activation, BatchNormalization, MaxPooling2D
-from keras.utils import np_utils
-from keras import layers, Input, Model
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Flatten, Dense, Conv2D, Dropout, Activation, BatchNormalization, MaxPooling2D
+from tensorflow.keras.utils import to_categorical
+from tensorflow.keras import layers, Input, Model
 from settings import main_settings
 import wandb
 from wandb.keras import WandbCallback
 from load_datasets import load_data_traffic_signs
-import keras
+from tensorflow import keras
 
 settings, configs = main_settings.get_settings()
 (X_train, y_train), (X_valid, y_valid), (X_test, y_test), signs = settings.DATA_LOADER()
@@ -48,8 +50,13 @@ def list_images(dataset, dataset_y, ylabel="", cmap=None):
         # Use gray scale color map if there is only one channel
         cmap = 'gray' if len(dataset[indx].shape) == 2 else cmap
         plt.imshow(dataset[indx], cmap=cmap)
-        plt.xlabel(signs[dataset_y[indx]])
-        plt.ylabel(ylabel)
+        font = {
+            'color': 'black',
+            'weight': 'normal',
+            'size': 17,
+        }
+        plt.xlabel(signs[dataset_y[indx]], fontdict=font)
+        # plt.ylabel(ylabel)
         plt.xticks([])
         plt.yticks([])
     plt.tight_layout(pad=0, h_pad=0, w_pad=0)
@@ -74,7 +81,7 @@ def histogram_plot(dataset, label):
 
 def visualizeDataset():
     # Plotting sample examples, before pre-processing
-    # list_images(X_train, y_train, "Training example")
+    list_images(X_train, y_train, "Training example")
     # list_images(X_test, y_test, "Testing example")
     # list_images(X_valid, y_valid, "Validation example")
     # Show frequency of each label
@@ -156,6 +163,7 @@ class KerasModel:
     def setup_model_keras(self):
         model = self.build_model()
         model.compile(loss='categorical_crossentropy', optimizer=Adam(), metrics=['accuracy'])
+
         return model
 
     def build_model(self):
@@ -245,17 +253,21 @@ def trainModelKeras(normalized_images):
 
     # Validation set preprocessing
     X_valid_preprocessed = preprocess(X_valid)
-    y_train_onehot = np_utils.to_categorical(y_train, n_classes)
-    y_valid_onehot = np_utils.to_categorical(y_valid, n_classes)
+    y_train_onehot = to_categorical(y_train, n_classes)
+    y_valid_onehot = to_categorical(y_valid, n_classes)
     kerasModel.model.fit(normalized_images, y_train_onehot, epochs=EPOCHS, batch_size=BATCH_SIZE,
                          validation_data=(X_valid_preprocessed, y_valid_onehot), callbacks=[WandbCallback()])
-    kerasModel.model.save(f"{settings.models_dir}/{settings.model_name}")
+    kerasModel.model.save(f"{settings.models_dir}/{settings.model_name}", save_format='h5')
     return kerasModel
 
 
 def showTestImagesWithLabels(test_data, test_labels, model, print_new_acc=False):
     new_test_images_preprocessed = preprocess(np.asarray(test_data))
-
+    font = {
+        'color': 'black',
+        'weight': 'normal',
+        'size': 20,
+    }
     # get predictions
     y_prob, y_pred = model.y_predict_topk_prob_and_pred(new_test_images_preprocessed)
     # generate summary of results
@@ -270,15 +282,17 @@ def showTestImagesWithLabels(test_data, test_labels, model, print_new_acc=False)
     plt.figure(figsize=(15, 16))
     new_test_images_len = len(new_test_images_preprocessed)
     for i in range(new_test_images_len):
-        plt.subplot(new_test_images_len, 2, 2 * i + 1)
+        plt.subplot(new_test_images_len * 2, 2, 2 * i * 2 + 1)
         plt.imshow(test_data[i])
-        plt.title(signs[test_labels[i]])
+        plt.title(signs[test_labels[i]], fontdict=font)
         #  plt.title(signs[y_pred[i][0]])
         plt.axis('off')
         plt.subplot(new_test_images_len, 2, 2 * i + 2)
-        plt.barh(np.arange(1, 6, 1), y_prob[i, :])
+        plt.barh(np.arange(1, 6, 1), y_prob[i, :] * 100)
         labels = [signs[j] for j in y_pred[i]]
+        plt.tick_params(axis='y', labelsize=18)
         plt.yticks(np.arange(1, 6, 1), labels)
+
     plt.show()
 
 
@@ -309,54 +323,59 @@ def main():
         visualizeDataset()
     # Randomize dataset to improve training, using sklearn
     X_train, y_train = shuffle(X_train, y_train)
-    X_train_normalized = preprocess(X_train)
+    # X_train_normalized = preprocess(X_train)
     #  Step 4, training
-    kerasModel = trainModelKeras(X_train_normalized)
+    kerasModel = KerasModel(n_out=n_classes)
+    kerasModel.load_model("models/TrafficSignRecognition-KerasModel.model")
+    # kerasModel = trainModelKeras(X_train_normalized)
 
     # Step 5, testing
-    X_test_preprocessed = preprocess(X_test)
-    y_test_onehot = np_utils.to_categorical(y_test, n_classes)
+    # X_test_preprocessed = preprocess(X_test)
+    # y_test_onehot = to_categorical(y_test, n_classes)
 
-    y_pred = kerasModel.y_predict(X_test_preprocessed)
-    test_accuracy = sum(y_test == y_pred) / len(y_test)
-    print("Test Accuracy = {:.1f}%".format(test_accuracy * 100))
+    # y_pred = kerasModel.y_predict(X_test_preprocessed)
+    # print(sum(y_test == y_pred))
+    # test_accuracy = sum(sum(y_test == y_pred)) / len(y_test)
+    # print("Test Accuracy = {:.1f}%".format(test_accuracy * 100))
 
     # Show model results, and failures
-    cm = confusion_matrix(y_test, y_pred)
-    cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-    cm = np.log(.0001 + cm)
-    plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
-    plt.title('Log of normalized Confusion Matrix')
-    plt.ylabel('True label')
-    plt.xlabel('Predicted label')
-    plt.show()
-
+    # cm = confusion_matrix(y_test, y_pred)
+    # cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+    # cm = np.log(.0001 + cm)
+    # plt.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+    # plt.title('Log of normalized Confusion Matrix')
+    # plt.ylabel('True label')
+    # plt.xlabel('Predicted label')
+    # plt.show()
+    showTestImagesWithLabels(test_data=X_test[0:5], test_labels=y_train[0:5], model=kerasModel)
     # Step 6, testing new images(outside dataset)
-    new_test_images = []
-    path = 'datasets/traffic-signs-data/new_test_images/'
-    for image in os.listdir(path):
-        img = cv2.imread(path + image)
-        img = cv2.resize(img, (32, 32))
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        new_test_images.append(img)
-    new_IDs = [13, 3, 14, 27, 17]
-    print("Number of new testing examples: ", len(new_test_images))
+    # new_test_images = []
+    # path = 'datasets/traffic-signs-data/new_test_images/'
+    # for image in os.listdir(path):
+    #     img = cv2.imread(path + image)
+    #     img = cv2.resize(img, (32, 32))
+    #     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    #     new_test_images.append(img)
+    # new_IDs = [13, 3, 14, 27, 17]
+    # print("Number of new testing examples: ", len(new_test_images))
 
-    plt.figure(figsize=(15, 16))
-    for i in range(len(new_test_images)):
-        plt.subplot(2, 5, i + 1)
-        plt.imshow(new_test_images[i])
-        plt.xlabel(signs[new_IDs[i]])
-        plt.ylabel("New testing image")
-        plt.xticks([])
-        plt.yticks([])
-    plt.tight_layout(pad=0, h_pad=0, w_pad=0)
-    plt.show()
+    # plt.figure(figsize=(15, 16))
+    # for i in range(len(new_test_images)):
+    #     plt.subplot(2, 5, i + 1)
+    #     plt.imshow(new_test_images[i])
+    #     plt.xlabel(signs[new_IDs[i]])
+    #     plt.ylabel("New testing image")
+    #     plt.xticks([])
+    #     plt.yticks([])
+    # plt.tight_layout(pad=0, h_pad=0, w_pad=0)
+    # plt.show()
 
-    # New test data preprocessing
-    showTestImagesWithLabels(new_test_images, new_IDs, kerasModel)
+
+#
+# # New test data preprocessing
+# showTestImagesWithLabels(new_test_images, new_IDs, kerasModel)
 
 
 if __name__ == '__main__':
-    wandb.init(project='Adversarial-SelfDriving', entity='therealaakash', config=configs)
+    # wandb.init(project='Adversarial-SelfDriving', entity='therealaakash', config=configs)
     main()

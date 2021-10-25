@@ -1,21 +1,25 @@
 from __future__ import print_function
 
 import os
+import random
 import warnings
 
 warnings.filterwarnings("ignore", module="matplotlib\..*")
 
-import keras
+from tensorflow import keras
 import matplotlib.pyplot as plt
 import numpy as np
-from keras import Model
-from keras import backend as K
-from keras.layers import Input
-from keras.metrics import binary_accuracy
-from keras.optimizers import Adam, SGD
-from keras.utils import to_categorical
+import tensorflow as tf
+
+tf.compat.v1.set_random_seed(1)
+tf.compat.v1.disable_eager_execution()
+from tensorflow.keras import Model
+from tensorflow.keras import backend as K
+from tensorflow.keras.layers import Input
+from tensorflow.keras.metrics import binary_accuracy
+from tensorflow.keras.optimizers import Adam, SGD
+from tensorflow.keras.utils import to_categorical
 from numpy.random import seed
-from tensorflow import set_random_seed
 
 import classifier
 from discriminatorModel import build_discriminator
@@ -31,6 +35,14 @@ if not os.path.exists("misclass"):
 def custom_acc(y_true, y_pred):
     return binary_accuracy(K.round(y_true), K.round(y_pred))
 
+
+gpus = tf.config.experimental.list_physical_devices('GPU')
+if len(gpus) > 0:
+    print(f'GPUs {gpus}')
+    try:
+        tf.config.experimental.set_memory_growth(gpus[0], True)
+    except RuntimeError:
+        pass
 
 kerasModel = None
 settings, config = get_settings()
@@ -60,7 +72,9 @@ def showComps(batch, labels):
     batch = (batch + 1) / 2.
     batch = batch * 255
     batch.clip(0, 255)
-    classifier.showTestImagesWithLabels(np.array(batch[:5], np.uint8), labels[:5], kerasModel)
+    x = random.randint(0, len(batch) - 5)
+    add = random.randint(1, 6)
+    classifier.showTestImagesWithLabels(np.array(batch[x:x + add], np.uint8), labels[x:x + add], kerasModel)
 
 
 # noinspection DuplicatedCode
@@ -72,10 +86,10 @@ class DCGAN:
         optimizer_g = Adam(settings.AdvGAN_Discriminator_LR)
         optimizer_d = SGD(settings.AdvGAN_Discriminator_LR)
         print(settings.IMG_SHAPE)
-        inputs = Input(shape=settings.IMG_SHAPE)
+        inputs = Input(shape=x_train[0].shape)
         outputs = build_generator(inputs)
         self.generatorModel = Model(inputs, outputs)
-        # self.generatorModel.summary()
+        self.generatorModel.summary()
 
         outputs = build_discriminator(self.generatorModel(inputs))
         self.discriminatorModel = Model(inputs, outputs)
@@ -198,8 +212,10 @@ class DCGAN:
                 save_generated_images(str(epoch), Gx_batch, 'images')
                 save_generated_images(str(epoch), Gx_batch[misclassified], 'misclass')
                 showComps(Gx_batch[misclassified], y_batch.reshape((len(x_train) % batch_size,))[misclassified])
-        self.generatorModel.save(f"{settings.models_dir}/{settings.generator_model_name}")
-        self.discriminatorModel.save(f"{settings.models_dir}/{settings.discriminator_model_name}")
+            self.generatorModel.save(f"{settings.models_dir}/{settings.generator_model_name}", save_format="h5")
+            self.discriminatorModel.trainable = True
+            self.discriminatorModel.save(f"{settings.models_dir}/{settings.discriminator_model_name}", save_format="h5")
+            self.discriminatorModel.trainable = False
 
     def testGAN(self):
         # x_train = np.array(x_train)[:6000]
@@ -232,6 +248,7 @@ class DCGAN:
         save_generated_images(str("Test-images"), Gx_batch, 'images')
         save_generated_images(str("Test-images"), Gx_batch[misclassified], 'misclass')
         showComps(Gx_batch[misclassified], y_batch.reshape((len(x_train) % batch_size,))[misclassified])
+        np.save("data.npy", [Gx_batch, y_batch])
 
     def genImages(self):
         print("Generating...")
@@ -242,8 +259,8 @@ class DCGAN:
 
 
 if __name__ == '__main__':
+    tf.compat.v1.set_random_seed(1)
     seed(1)
-    set_random_seed(1)
     dcgan = DCGAN()
     if settings.mode == "train":
         dcgan.trainGAN()

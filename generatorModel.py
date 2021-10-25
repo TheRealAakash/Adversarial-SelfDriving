@@ -1,10 +1,18 @@
 from __future__ import print_function
-from keras import backend as K
-from keras import layers
-from keras.layers import Activation
-from keras.layers import Conv2D, Conv2DTranspose, BatchNormalization
-from keras_contrib.layers.normalization.instancenormalization import InstanceNormalization
+
+from collections import defaultdict
+
+import visualkeras
+from PIL import ImageFont
+from tensorflow.keras import backend as K
+from tensorflow.keras import layers
+from tensorflow.keras.layers import Activation
+from tensorflow.keras.layers import Conv2D, Conv2DTranspose, BatchNormalization
+# from keras_contrib.layers.normalization.instancenormalization import InstanceNormalization
+from tensorflow.python.keras import Input, Model
+
 from settings import main_settings
+from tensorflow_addons.layers import InstanceNormalization
 
 settings, configs = main_settings.get_settings()
 
@@ -57,3 +65,15 @@ def build_generator(inputs):
     G = Activation('relu')(G)
     G = layers.add([G, inputs])
     return G
+
+
+if __name__ == '__main__':
+    font = ImageFont.truetype("times.ttf", 25)  # using comic sans is strictly prohibited!
+    color_map = defaultdict(dict)
+    color_map[Conv2DTranspose]['fill'] = 'grey'
+    inputs = Input(shape=(32, 32, 3))
+    model = build_generator(inputs)
+    model = Model(inputs, model)
+    img = visualkeras.layered_view(model, color_map=color_map, legend=True, font=font)
+    img.show()
+    img.save("generatorArch.png")

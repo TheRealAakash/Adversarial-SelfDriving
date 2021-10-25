@@ -1,8 +1,7 @@
 import csv
 import pickle
 from sklearn.utils import shuffle
-from keras.datasets import mnist, cifar10
-import fiftyone as fo
+from tensorflow.keras.datasets import mnist, cifar10
 import cv2
 import numpy as np
 from sklearn.utils import shuffle
@@ -40,7 +39,6 @@ def load_data_traffic_signs():
     X_valid, y_valid = shuffle(X_valid, y_valid)
     X_test, y_test = shuffle(X_test, y_test)
     return (X_train, y_train), (X_valid, y_valid), (X_test, y_test), signs
-
 
 def load_data_cifar10():
     signs = []
