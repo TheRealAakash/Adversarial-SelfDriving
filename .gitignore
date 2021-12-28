@@ -1,0 +1,15 @@
+/V1/
+*.npy
+*.h5
+*.model
+/datasets/
+/misclass/
+/models/
+/logs/
+/images/
+*.xml
+*.png
+*.zip
+*.p
+/.idea/
+*.iml
