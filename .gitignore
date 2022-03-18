@@ -9,6 +9,7 @@
 /images/
 *.xml
 *.png
+*.jpg
 *.zip
 *.p
 /.idea/
