@@ -35,5 +35,5 @@ if __name__ == '__main__':
     model = build_discriminator(inputs)
     model = Model(inputs, model)
     img = visualkeras.layered_view(model, color_map=color_map, legend=True, font=font)
-    img.show()
+    RealWorld.raspi.picar.SunFounder_TB6612.show()
     img.save("discriminatorArch.png")

@@ -57,7 +57,7 @@ class CarEnv(Env):
         self.autopilotEnabled = autopilot
         self.collision_hist = []
         self.actor_list = []
-        self.client = carla.Client("192.168.1.2", 2000)
+        self.client = carla.Client("localhost", 2000)
         self.client.set_timeout(60.0)
         self.world = self.client.get_world()
         self.client.reload_world()
@@ -158,7 +158,8 @@ class CarEnv(Env):
         self.rgb_cam.set_attribute("image_size_y", f"{self.im_height}")
         self.rgb_cam.set_attribute("fov", f"110")
 
-        transform = carla.Transform(carla.Location(x=2.5, z=0.7))
+        transform = carla.Transform(carla.Location(x=2.5, y=0, z=0.7), carla.Rotation(pitch=0, yaw=0, roll=0))
+        # transform = carla.Transform(carla.Location(x=2.5, y=0, z=0.7))
         self.sensor = self.world.spawn_actor(self.rgb_cam, transform, attach_to=self.vehicle)
         self.actor_list.append(self.sensor)
         self.sensor.listen(lambda data: self.process_img(data))
@@ -206,7 +207,8 @@ class CarEnv(Env):
         self.state = self.front_camera
         # self.state = cv2.cvtColor(self.front_camera, cv2.COLOR_BGR2GRAY)
         self.state = cv2.resize(self.state, dsize=(stateWidth, stateHeight))
-        # cv2.imshow("state", self.state)
+        cv2.imshow("state", self.state)
+        cv2.waitKey(1)
 
     def step(self, action):
         self.world.tick()
@@ -222,16 +224,6 @@ class CarEnv(Env):
             act = [float(action[0]), float(action[1] * 2 - 1), 0 if action[2] < 0.7 else 1]
             print(act)
             self.vehicle.apply_control(carla.VehicleControl(throttle=act[0], steer=act[1], brake=act[2]))  # , brake=0 if action[2] < 0.7 else 1))
-        # if action == 0:
-        #     self.vehicle.apply_control(carla.VehicleControl(throttle=1.0, steer=-1 * self.STEER_AMT))
-        # elif action == 1:
-        #     self.vehicle.apply_control(carla.VehicleControl(throttle=1.0, steer=0))
-        # elif action == 2:
-        #     self.vehicle.apply_control(carla.VehicleControl(throttle=1.0, steer=1 * self.STEER_AMT))
-        # elif action == 3:
-        #     self.vehicle.apply_control(carla.VehicleControl(throttle=0.0, steer=0))
-        # else:
-        #     self.vehicle.apply_control(carla.VehicleControl(throttle=0.0, steer=0, brake=0.5))
 
         v = self.vehicle.get_velocity()
         kmh = int(3.6 * math.sqrt(v.x ** 2 + v.y ** 2 + v.z ** 2))
@@ -265,7 +257,6 @@ class CarEnv(Env):
         self.getState()
         # self.render()
         control = self.vehicle.get_control()
-
         return self.state, reward, done, [float(control.throttle), float((control.steer + 1) / 2), float(control.brake)]
 
     def render(self, mode=""):
@@ -304,14 +295,20 @@ def main():
     env = CarEnv(True)
     try:
         import random
-
+        import getKeys
         while True:
             done = False
             while not done:
                 front_camera, reward, done, actionsTaken = env.step([1, 0, 0])
                 print(actionsTaken)
                 env.render()
+                if "S" in getKeys.key_check():
+                    cv2.imwrite("state.png", front_camera)
+                    while True:
+                        if "P" in getKeys.key_check():
+                            break
             env.reset()
+
     except Exception as e:
         env.close()
 

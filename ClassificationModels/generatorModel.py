@@ -66,12 +66,11 @@ def build_generator(inputs):
 
 
 if __name__ == '__main__':
-    font = ImageFont.truetype("times.ttf", 25)  # using comic sans is strictly prohibited!
+    font = ImageFont.truetype("times.ttf", 25)
     color_map = defaultdict(dict)
     color_map[Conv2DTranspose]['fill'] = 'grey'
     inputs = Input(shape=(32, 32, 3))
     model = build_generator(inputs)
     model = Model(inputs, model)
     img = visualkeras.layered_view(model, color_map=color_map, legend=True, font=font)
-    img.show()
     img.save("generatorArch.png")

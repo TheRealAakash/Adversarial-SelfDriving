@@ -4,6 +4,8 @@ import os
 import random
 import warnings
 
+from sklearn.utils import shuffle
+
 warnings.filterwarnings("ignore", module="matplotlib\..*")
 
 from tensorflow import keras
@@ -11,8 +13,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 
-tf.compat.v1.set_random_seed(1)
-tf.compat.v1.disable_eager_execution()
 from tensorflow.keras import Model
 from tensorflow.keras import backend as K
 from tensorflow.keras.layers import Input
@@ -48,8 +48,10 @@ if len(gpus) > 0:
         pass
 
 kerasModel = None
-(x_train, y_train), (x_test, y_test), (_, _), _ = settings.DATA_LOADER()
+(x_train, y_train), (x_test, y_test), (x_valid, y_valid), _ = settings.DATA_LOADER()
+x_train, y_train = shuffle(x_train, y_train)
 x_train = (x_train * 2. / 255 - 1).reshape((len(x_train), settings.IMG_W, settings.IMG_H, settings.CHANNELS))  # pixel values in range [-1., 1.] for D
+x_valid = (x_valid * 2. / 255 - 1).reshape((len(x_valid), settings.IMG_W, settings.IMG_H, settings.CHANNELS))  # pixel values in range [-1., 1.] for D
 
 
 def save_generated_images(filename, batch, directory):
@@ -70,17 +72,23 @@ def save_generated_images(filename, batch, directory):
     plt.close()
 
 
-def showComps(batch, labels):
+def showCompsOnBatch(batch, labels):
     batch = (batch + 1) / 2.
     batch = batch * 255
     batch.clip(0, 255)
     x = random.randint(0, len(batch) - 5)
-    add = random.randint(1, 6)
-    Classification.showTestImagesWithLabels(np.array(batch[x:x + add], np.uint8), labels[x:x + add], kerasModel)
+    Classification.showTestImagesWithLabels(np.array(batch[x:x + 5], np.uint8), labels[x:x + 5], kerasModel)
+
+
+def showComps(batch, labels):
+    batch = (batch + 1) / 2.
+    batch = batch * 255
+    batch.clip(0, 255)
+    Classification.showTestImagesWithLabels(np.array(batch[0:5], np.uint8), labels[0:5], kerasModel)
 
 
 # noinspection DuplicatedCode
-class DCGAN:
+class AdvGan:
     def __init__(self):
         global kerasModel
         # input image dimensions
@@ -101,8 +109,6 @@ class DCGAN:
         self.kerasModel = Classification.KerasModel(n_out=settings.N_CLASSES)
         kerasModel = self.kerasModel
         self.targetModel = self.kerasModel.model
-        self.targetModel.compile(loss=keras.losses.categorical_crossentropy, optimizer=keras.optimizers.Adam(),
-                                 metrics=['accuracy'])
         if settings.LOAD_TARGET_WEIGHTS:
             self.targetModel.load_weights(f"models/{settings.model_name}")
         # self.target.summary()
@@ -130,7 +136,7 @@ class DCGAN:
 
         # for each batch:
         # predict noise on generator: G(z) = batch of fake images
-        # train fake images on discriminator: D(G(z)) = update D params per D's classification for fake images
+        # train fake images on discriminator: D(G(z)) = update D params per D'imageSocket classification for fake images
         # train real images on discriminator: D(x) = update D params per classification for real images
 
         # Update D params
@@ -146,7 +152,7 @@ class DCGAN:
         self.discriminatorModel.trainable = False
         self.targetModel.trainable = False
         if not settings.targeted:
-            y_batch_cat = 1. - to_categorical(y_batch, settings.N_CLASSES)
+            y_batch_cat = 1. - to_categorical(y_batch, settings.N_CLASSES)  #
         else:
             y_batch_cat = []
             for label in np.array(y_batch).reshape(len(y_batch), ):
@@ -156,7 +162,7 @@ class DCGAN:
                     y_batch_cat.append(settings.target)
             y_batch_cat = to_categorical(y_batch_cat, settings.N_CLASSES)
         # for each batch:
-        # train fake images on discriminator: D(G(z)) = update G params per D's classification for fake images
+        # train fake images on discriminator: D(G(z)) = update G params per D'imageSocket classification for fake images
 
         # Update only G params
         # print(flipped_y_batch)
@@ -213,7 +219,8 @@ class DCGAN:
             if epoch % 1 == 0:
                 save_generated_images(str(epoch), Gx_batch, 'images')
                 save_generated_images(str(epoch), Gx_batch[misclassified], 'misclass')
-                showComps(Gx_batch[misclassified], y_batch.reshape((len(x_train) % batch_size,))[misclassified])
+                testImages = self.generatorModel.predict_on_batch(x_train[0:5])
+                showComps(testImages, y_train[0:5])
             self.generatorModel.save(f"{settings.models_dir}/{settings.generator_model_name}", save_format="h5")
             self.discriminatorModel.trainable = True
             self.discriminatorModel.save(f"{settings.models_dir}/{settings.discriminator_model_name}", save_format="h5")
@@ -263,7 +270,7 @@ class DCGAN:
 if __name__ == '__main__':
     tf.compat.v1.set_random_seed(1)
     seed(1)
-    dcgan = DCGAN()
+    dcgan = AdvGan()
     if settings.mode == "train":
         dcgan.trainGAN()
     elif settings.mode == "test":

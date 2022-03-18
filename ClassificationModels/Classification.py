@@ -1,4 +1,7 @@
 import matplotlib.pyplot as plt
+import tqdm
+
+from ClassificationModels import targetModel
 
 plt.rcParams["font.family"] = "Times New Roman"
 import pickle
@@ -168,46 +171,8 @@ class KerasModel:
         return model
 
     def setup_model_keras(self):
-        model = self.build_model()
-        model.compile(loss='categorical_crossentropy', optimizer=Adam(), metrics=['accuracy'])
-
+        model = targetModel.build_model(self.n_out)
         return model
-
-    def build_model(self):
-        model = Sequential()
-        model.add(Conv2D(32, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(BatchNormalization(axis=-1))
-        model.add(Conv2D(32, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(MaxPooling2D(pool_size=(2, 2)))
-
-        model.add(BatchNormalization(axis=-1))
-        model.add(Conv2D(64, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(BatchNormalization(axis=-1))
-        model.add(Conv2D(64, (3, 3)))
-        model.add(Activation('relu'))
-        model.add(MaxPooling2D(pool_size=(2, 2)))
-
-        model.add(Flatten())
-        # Fully connected layer
-
-        model.add(BatchNormalization())
-        model.add(Dense(512))
-        model.add(Activation('relu'))
-        model.add(BatchNormalization())
-        model.add(Dropout(0.2))
-        model.add(Dense(self.n_out))
-
-        # model.add(Convolution2D(10,3,3, border_mode='same'))
-        # model.add(GlobalAveragePooling2D())
-        model.add(Activation('softmax'))
-
-        img = Input(shape=settings.IMG_SHAPE)
-        validity = model(img)
-
-        return Model(img, validity)
 
     def y_predict(self, X_data):
         predictions = []
@@ -273,7 +238,7 @@ def showTestImagesWithLabels(test_data, test_labels, model, print_new_acc=False)
     font = {
         'color': 'black',
         'weight': 'normal',
-        'size': 20,
+        'size': 18,
     }
     # get predictions
     y_prob, y_pred = model.y_predict_topk_prob_and_pred(new_test_images_preprocessed)
@@ -286,20 +251,20 @@ def showTestImagesWithLabels(test_data, test_labels, model, print_new_acc=False)
     if print_new_acc:
         print("New Images Test Accuracy = {:.1f}%".format(test_accuracy * 100))
 
-    plt.figure(figsize=(15, 16))
+    fig = plt.figure(figsize=(15, 16))
+    fig.tight_layout(rect=[0, 0.03, 1, 0.95])
     new_test_images_len = len(new_test_images_preprocessed)
     for i in range(new_test_images_len):
-        plt.subplot(new_test_images_len * 2, 2, 2 * i * 2 + 1)
+        plt.subplot(new_test_images_len, 3, i * 3 + 1)
         plt.imshow(test_data[i])
         plt.title(signs[test_labels[i]], fontdict=font)
         #  plt.title(signs[y_pred[i][0]])
         plt.axis('off')
-        plt.subplot(new_test_images_len, 2, 2 * i + 2)
+        plt.subplot(new_test_images_len, 3, 3 * i + 3)
         plt.barh(np.arange(1, 6, 1), y_prob[i, :] * 100)
         labels = [signs[j] for j in y_pred[i]]
         plt.tick_params(axis='y', labelsize=18)
         plt.yticks(np.arange(1, 6, 1), labels)
-
     plt.show()
 
 
@@ -308,7 +273,7 @@ def showTestImages(test_data, model):
     # get predictions
     y_prob, y_pred = model.y_predict_topk_prob_and_pred(new_test_images_preprocessed)
     # generate summary of results
-    plt.figure(figsize=(15, 16))
+    figure, axes = plt.figure(figsize=(15, 16))
     new_test_images_len = len(new_test_images_preprocessed)
     for i in range(new_test_images_len):
         plt.subplot(new_test_images_len, 2, 2 * i + 1)
@@ -319,13 +284,15 @@ def showTestImages(test_data, model):
         plt.barh(np.arange(1, 6, 1), y_prob[i, :])
         labels = [signs[j] for j in y_pred[i]]
         plt.yticks(np.arange(1, 6, 1), labels)
+    figure.tight_layout(w_pad=3)
     plt.show()
 
 
 def main():
-    global X_train, y_train
-    useTests = False
-    loadPrevModel = False
+    global X_train, y_train, y_test
+    # import AdvGAN
+    useTests = True
+    loadPrevModel = True
     # Step 3, preprocessing
     if SHOW_DATASET:
         visualizeDataset()
@@ -335,18 +302,25 @@ def main():
     #  Step 4, training
     if loadPrevModel:
         kerasModel = KerasModel(n_out=n_classes)
-        kerasModel.load_model("path_to_model")
+        kerasModel.load_model(f"{settings.models_dir}/{settings.model_name}")
     else:
         kerasModel = trainModelKeras(X_train_normalized)
 
     # Step 5, testing
     if useTests:
-        X_test_preprocessed = preprocess(X_test)
+        X_test_preprocessed = []
+        # advGan = AdvGAN.AdvGan()
+        # X_test_preprocessed = advGan.generatorModel.predict_on_batch(X_train[:100])
+        # X_test_preprocessed = preprocess(X_test_preprocessed)
         y_test_onehot = to_categorical(y_test, n_classes)
-
-        y_pred = kerasModel.y_predict(X_test_preprocessed)
+        print(X_test_preprocessed)
+        # y_pred = np.array()
+        y_pred = y_test[:1000]
+        y_test = np.array(y_train[:1000])
+        print(y_test)
+        print(y_pred)
         print(sum(y_test == y_pred))
-        test_accuracy = sum(sum(y_test == y_pred)) / len(y_test)
+        test_accuracy = sum(y_test == y_pred) / len(y_test)
         print("Test Accuracy = {:.1f}%".format(test_accuracy * 100))
 
         # Show model results, and failures
@@ -358,8 +332,8 @@ def main():
         plt.ylabel('True label')
         plt.xlabel('Predicted label')
         plt.show()
-    showTestImagesWithLabels(test_data=X_test[0:5], test_labels=y_train[0:5], model=kerasModel)
-    if useTests:
+    showTestImagesWithLabels(test_data=X_test[0:5], test_labels=y_test[0:5], model=kerasModel)
+    if useTests and False:
         # Step 6, testing new images(outside dataset)
         new_test_images = []
         path = 'datasets/traffic-signs-data/new_test_images/'
@@ -383,11 +357,5 @@ def main():
         plt.show()
 
 
-#
-# # New test data preprocessing
-# showTestImagesWithLabels(new_test_images, new_IDs, kerasModel)
-
-
 if __name__ == '__main__':
-    # wandb.init(project='Adversarial-SelfDriving', entity='therealaakash', config=configs)
     main()

@@ -17,6 +17,7 @@ import math
 
 
 # from getKeys import key_check
+# from Simulation.getKeys import key_check
 
 
 def get_transform(vehicle_location, angle, d=-8.4):
@@ -68,7 +69,8 @@ def main():
         #     num += 1
         #     time.sleep(1)
         #     print(f"Camera switched to {num}, out of {len(cameras)} cameras...")
-        #     key_check()
+        #     while "N" in key_check():
+        #         pass
         # if "Xsdf" in key_check():
         #     if cameras:
         #         cameras[num].destroy()

@@ -5,7 +5,7 @@ class Config:
     models_dir = "models"
     DATASET = "TrafficSigns"
     target_learning_rate = 0.001
-    target_model_epochs = 5
+    target_model_epochs = 50
     target_batch_size = 64
     model_name = "TrafficSignRecognition-KerasModel.model"
 
@@ -17,13 +17,13 @@ class Config:
 
     generator_model_name = "TrafficSignRecognition-GeneratorModel.model"
     discriminator_model_name = "TrafficSignRecognition-DiscriminatorModel.model"
-    load_generator = False
-    load_discriminator = False
+    load_generator = True
+    load_discriminator = True
     images_name = "TrafficSignGenerated"
 
     c = 0.3
 
-    targeted = True
+    targeted = False
     targets = {8: 4}
     target = 8
 
