@@ -1,5 +1,5 @@
 # Adversarial-SelfDriving
-
+https://www.youtube.com/watch?v=cdovxn3BRM4
 With the rise of self-driving cars, Artificial Intelligence is becoming increasingly prevalent. In particular, self-driving cars rely on a type of Artificial Intelligence called convolutional neural networks, which allow an AI to see. Due to the increase in the prevalence of Convolutional Neural Networks, it is essential to ensure these critical AI applications are resilient to making errors. However, current Convolutional Neural Networks require tremendous amounts of data to classify images successfully. In practice, acquiring such large amounts of data is often impractical. As a result, most current Computer Vision algorithms are vulnerable to errors due to minor environmental variations. These errors can have disastrous consequences with critical applications such as self-driving cars.
 
 The Adversarial Self-Driving framework seeks to improve the reliability of these AI applications that are becoming increasingly important to the world. The objective of this framework is to increase the reliability of Convolutional Neural Networks without requiring additional data over current methods. The framework achieves this objective using three components: a classifier, a generator, and a discriminator.
