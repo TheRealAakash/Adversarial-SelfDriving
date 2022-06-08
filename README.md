@@ -1,5 +1,5 @@
 # Adversarial-SelfDriving
-[![Watch the video](https://www.youtube.com/watch?v=cdovxn3BRM4)]
+[![Watch the video](https://img.youtube.com/vi/cdovxn3BRM4/maxresdefault.jpg)](https://youtu.be/cdovxn3BRM4)
 
 With the rise of self-driving cars, Artificial Intelligence is becoming increasingly prevalent. In particular, self-driving cars rely on a type of Artificial Intelligence called convolutional neural networks, which allow an AI to see. Due to the increase in the prevalence of Convolutional Neural Networks, it is essential to ensure these critical AI applications are resilient to making errors. However, current Convolutional Neural Networks require tremendous amounts of data to classify images successfully. In practice, acquiring such large amounts of data is often impractical. As a result, most current Computer Vision algorithms are vulnerable to errors due to minor environmental variations. These errors can have disastrous consequences with critical applications such as self-driving cars.
 
